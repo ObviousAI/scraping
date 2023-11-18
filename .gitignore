@@ -1,0 +1,15 @@
+#Local secure files.
+.env
+failed_urls.txt
+failed_images.txt
+
+# Package files
+myenv
+hm_scrapy
+
+#caches
+__pycache__
+jsondump
+
+#Test files
+test.py
