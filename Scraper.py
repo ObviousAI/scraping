@@ -36,7 +36,7 @@ class Scraper():
     proxies_all = "https://customer-ardaakman:Scriep123@pr.oxylabs.io:7777"
     # Split the proxies into a list, and split each proxy into the relevant fields (username, password, endpoint, port)
 
-    def __init__(self, startingUrl, company, brand_base_url, ignoreUpdates=False):
+    def __init__(self, startingUrl, company, brand_base_url, residentialProxy = False, ignoreUpdates=False):
         # Name of company that is being scraped.
         self.company = company
         # Starting url of the scraped company.
@@ -56,8 +56,8 @@ class Scraper():
         self.datacenter_proxies = [x.strip() for x in self.datacenter_proxies]
         
         with open("./headers.txt", "r") as file:
-            self.headers = file.readlines()
-        self.headers = [x.strip() for x in self.headers]
+            self.agents = file.readlines()
+        self.agents = [x.strip() for x in self.agents]
 
         self.residential_proxy = "rotating.proxyempire.io:5000:package-10001-country-us:9ROhXWh4YAaauHEV"
 
@@ -67,7 +67,13 @@ class Scraper():
         #Column names for the urls table in database.
         self.url_columns = ["url", "brand"]
 
-
+    
+    def get_proxy(self):
+        if self.residentialProxy:
+            return self.get_residential_proxy()
+        else:
+            return self.get_datacenter_proxy()
+        
     def get_datacenter_proxy(self) -> dict:
         proxy = random.choice(self.datacenter_proxies)
         provider = {

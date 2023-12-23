@@ -462,7 +462,26 @@ class PostgressDBConnection():
             self.conn.rollback()
             raise Exception("Error creating table")
         
-    def remove_duplicates_in_database(self, brand, tablename):
+    def remove_url_duplicates(self, brand, tablename = "producturls"):
+        """Remove duplicates in the database, based on the url. Remove only for given brand (to keep it safe/shorter runtime)"""
+        query = f"""DELETE FROM {tablename} 
+                    WHERE unique_ids NOT IN (
+                        SELECT MIN(unique_ids) 
+                        FROM {tablename} 
+                        WHERE brand = '{brand}' 
+                        GROUP BY url
+                    );"""
+        try:
+            curr = self.conn.cursor()
+            curr.execute(query)
+            self.conn.commit()
+
+        except:
+            self.conn.rollback()
+            raise Exception("Error removing duplicates from database")
+        
+
+    def remove_product_duplicates(self, brand, tablename = "productdata"):
         """Remove duplicates in the database, based on the url. Remove only for given brand (to keep it safe/shorter runtime)"""
         query = f"""DELETE FROM {tablename} 
                     WHERE unique_ids NOT IN (
@@ -478,6 +497,7 @@ class PostgressDBConnection():
         except:
             self.conn.rollback()
             raise Exception("Error removing duplicates from database")
+        
         
     
     def table_exists(self, table_name):
