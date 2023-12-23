@@ -27,73 +27,6 @@ load_dotenv()
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class AWSS3Connection():
-    AGENT_LIST = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 Edg/98.0.1108.56",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 OPR/98.0.4515.107",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 Edge/98.0.1108.56",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 Edg/98.0.1108.56",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 OPR/98.0.4515.107",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 Edge/98.0.1108.56",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 Edg/98.0.1108.56",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 OPR/98.0.4515.107",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 Edge/98.0.1108.56",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 Edg/98.0.1108.56",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/98.0.4515.107",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 OPR/98.0.4515.107",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4515.107 Safari/537.36 Edge/98.0.1108.56",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"
-    ]
     bucket_name = os.environ.get("AWSBUCKETNAME")
     def __init__(self):
         self.s3 = boto3.client(
@@ -252,111 +185,44 @@ class AWSS3Connection():
                             pbar.update(1)  # Update the progress bar for each completed batch
 
 
-    def upload_images_to_s3(self, brand, scraper, upload_to_rds = False):
-        """ Upload images to s3 bucket.
-            To do this, initially create an instance of the PostgressDBConnection class, and run a select query to get all the necessary information from the database.
-            Then, hash the information and push to database.
-            If upload to rds is true, also upload the mappings to rds."""
-        #TODO: Create the same query as below, but sort by ascending unique_ids column
-        # This way, we can get the images in the order they were scraped.
-        # This is important for the image classifier.
-        query = f"""SELECT url, images
-                        FROM productdata
-                            WHERE brand = '{brand}'
-                                ORDER BY unique_ids ASC;
-                                                    """
-        #Parse image urls from databse
-        # They are seperated by a delimeter, so split them.
-        # Only grab the ones that end with [file:/product/fullscreen]
-        rows = scraper.pg.run_query(query)
-        # Get all filenames from s3. Then, compare.
-        files = self.list_all_objects(self.s3, self.bucket_name)
-        print(len(files), " images already in S3.") 
-        rows = np.array(rows)
-        # Get urls, so first element in each row.
-        image_urls = []
+    def parse_image_urls(rows):
+        image_urls, main_image_queue, other_image_queue = [], [], []
         urls = rows[:, 1]
-        main_image_queue, other_image_queue = [], []
-        # Now split each ones, and add all of them to list.
+
         for url in urls:
-            if "|" in url:
-                split_urls = url[1:-1].split("|")
-            else:
-                split_urls = url[1:-1].split(",")
-            # Grab only the ones in indices 1, 4, 7, 10, 13, 16, 19, 22, 25, 28...
+            split_urls = url[1:-1].split("|" if "|" in url else ",")
             split_urls = split_urls[0::3]
-            if len(split_urls) >= 3:
-                best_image_url = split_urls[-3]
-            elif len(split_urls) >= 2:
-                best_image_url = split_urls[-2]
-            else:
-                best_image_url = split_urls[-1]
-            s3key = self.get_s3_key_from_url(best_image_url)
-            other_images = [url for url in split_urls if not(url == best_image_url)]
-            if not(s3key in files):
-                main_image_queue.append(best_image_url)
-            for split_url in other_images:
-                s3_key = self.get_s3_key_from_url(split_url)
-                if not(s3_key in files):
-                    other_image_queue.append(split_url) 
+            best_image_url = split_urls[-3] if len(split_urls) >= 3 else (split_urls[-2] if len(split_urls) >= 2 else split_urls[-1])
+            
+            other_images = [u for u in split_urls if u != best_image_url]
+            main_image_queue.append(best_image_url)
+            other_image_queue.extend(other_images)
 
-        
-        image_urls.extend(main_image_queue)
-        image_urls.extend(other_image_queue)   
-        print(len(image_urls), " images to be added to s3")
-        # Upload images to s3 using rows. Use proxies provided by aws.
+        return main_image_queue, other_image_queue
+
+    def filter_new_images(files, image_queue, get_s3_key):
+        new_images = [url for url in image_queue if get_s3_key(url) not in files]
+        return new_images
+
+    def upload_images_to_s3(self, brand, scraper, upload_to_rds=False):
+        query = f"""SELECT url, images
+                    FROM productdata
+                    WHERE brand = '{brand}'
+                    ORDER BY unique_ids ASC;"""
+
+        rows = scraper.pg.run_query(query)
+        files = self.list_all_objects(self.s3, self.bucket_name)
+        print(f"{len(files)} images already in S3.")
+
+        rows = np.array(rows)
+        main_image_queue, other_image_queue = self.parse_image_urls(rows)
+        main_new_images = self.filter_new_images(files, main_image_queue, self.get_s3_key_from_url)
+        other_new_images = self.filter_new_images(files, other_image_queue, self.get_s3_key_from_url)
+
+        image_urls = main_new_images + other_new_images
+        print(f"{len(image_urls)} images to be added to S3.")
+
         self.process_url_images(image_urls, scraper)
-
-
-
-    # def process_url_images(self, urls_chunk, scraper):
-    #     """ Method to actually save the images in our own boto3 (AWS S3) bucket.
-    #         For now, I am not using any multiprocessing, but this can be done in the future.
-    #     """
-    #     s3 = AWSS3Connection.initialize_s3(None)
-    #     failed_images = []
-    #     for sub_start in tqdm(range(0, len(urls_chunk), 10)):
-    #         urls= urls_chunk[sub_start:sub_start+10]
-            
-    #         # Create a new session -> get a random proxy from firefox_proxy method, and then update the session with the proxy.
-    #         # Also grab a random user agent from the list of user agents.
-    #         # TODO: Update the user agents, I think we are running out of good ons.
-    #         # We are doing 10 loops at once instead - get 10 images, then upload them as a batch.
-
-    #         proxy = scraper.datacenter_proxy()
-    #         agent = random.choice(scraper.headers)
-    #         header = {
-    #             'User-Agent': agent,
-    #             'origin': 'https://www2.hm.com'
-    #         }
-    #         session = requests.Session()
-    #         session.proxies.update(proxy)
-    #         session.headers.update(header)
-            
-    #         new_urls = []
-    #         for url in urls:
-    #             if url.startswith("//"):
-    #                 full_url = "https:" + url
-    #             elif url.startswith("/"):
-    #                 full_url = "https:/" + url
-    #             new_urls.append(full_url)
-    #         try: 
-    #             images = []
-    #             for url in new_urls:
-    #                 image_bytes = AWSS3Connection.download_image(None, full_url, session, scraper)
-
-    #             if image_bytes == None:
-    #                 continue
-    #             AWSS3Connection.upload_to_s3(None, s3, image_bytes, url, full_url) 
-    #         except Exception as e:
-    #             print("Error downloading image")
-    #             failed_images.append(url)
-    #             print(e)
-    #             continue
-    #     # Save failed images locally, so we can try again later.
-    #     with open("failed_images.txt", "a") as f:
-    #         for image in failed_images:
-    #             f.write(image + "\n")
 
 
 @dataclass
@@ -443,7 +309,6 @@ class PostgressDBConnection():
             print(f"Error: {error}")
 
     
-
     def create_table(self, table_name:str, columns:Column):
         """Create a table in the database with the given name, columns. Column is an object itself, with the attributes name, type, isNull, and isPrimary."""
         #Check if table exists first.
@@ -550,12 +415,9 @@ class PostgressDBConnection():
             return False
 
         
-    def save_data_to_db(self, tablename, data, columns):       
+    def save_data_to_db(self, data, columns):       
         if not(self.table_exists("productdata")):
             self.create_product_table()
-
-        if not(self.table_exists(tablename)):
-            self.create_product_urls_table()
 
         if not(data):
             print("No data provided")
@@ -566,37 +428,28 @@ class PostgressDBConnection():
             return
         
         
-        insert_query = f"INSERT INTO {tablename} ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (unique_ids) DO NOTHING;"
+        insert_query = f"INSERT INTO productdata ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (unique_ids) DO NOTHING;"
         with self.conn.cursor() as cursor:
             psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
         self.conn.commit()
 
 
 
-    def save_urls_db(self, tablename, url_list, company_name, gender):
+    def save_urls_db(self, url_list, company_name, gender):
         if (not(url_list) or not(company_name)) or (len(url_list) == 0):
             print("Problem in input provided")
             return
         
-        if not(self.table_exists(tablename)):
-            columns = [Column("url", "TEXT", True, True), Column("company", "TEXT", True, False), Column("gender", "TEXT", True, False)]
-            self.create_table(tablename, columns)
-            self.table_name = tablename
-
+        if not(self.table_exists("producturls")):
+            self.create_product_urls_table()
         
         query = f"SELECT url FROM {self.table_name} WHERE company = '{company_name}';"
         self.run_query(query)  
 
         try:
             url_tuple = tuple(url_list)
-            # Delete rows for 'company_a' that are not in new_url_list
-            delete_query = '''
-            DELETE FROM productUrls
-            WHERE company = %s AND url NOT IN %s;
-            '''
             cur = self.conn.cursor()
-            cur.execute(delete_query, (company_name, url_tuple))
-            
+
             # Prepare bulk insert query
             insert_query = '''
             INSERT INTO productUrls (url, company, gender)
@@ -620,17 +473,6 @@ class PostgressDBConnection():
             # Close cursor and connection
             cur.close()
             self.conn.close()
-
-    def select_query(self, query):
-        """Run a select query on the database."""
-        try:
-            curr = self.conn.cursor()
-            curr.execute(query)
-            self.conn.commit()
-            return curr.fetchall()
-        except:
-            self.conn.rollback()
-            raise Exception("Error running select query")
     
     def disconnect(self):
         """Disconnect from the database. This function is destructive, will kill the object!"""
