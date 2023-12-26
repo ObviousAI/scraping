@@ -204,10 +204,10 @@ class AWSS3Connection():
         new_images = [url for url in image_queue if get_s3_key(url) not in files]
         return new_images
 
-    def upload_images_to_s3(self, brand, scraper, upload_to_rds=False):
+    def upload_images_to_s3(self, company, scraper, upload_to_rds=False):
         query = f"""SELECT url, images
                     FROM productdata
-                    WHERE brand = '{brand}'
+                    WHERE company = '{company}'
                     ORDER BY unique_ids ASC;"""
 
         rows = scraper.pg.run_query(query)
@@ -255,13 +255,13 @@ class PostgressDBConnection():
             )
         self.table_name = table_name
 
-    def create_product_table(self):
+    def create_product_table(self, tablename = None):
         """Columns are the following:
-            columns = ['unique_ids', 'name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'brand']
+            columns = ['unique_ids', 'name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company']
         """
         # Create table using self.pg.conn. Just hardcode the above column value, unique_ids being the key of table.
-        create_table_sql = """
-        CREATE TABLE IF NOT EXISTS productdata (
+        create_table_sql = f"""
+        CREATE TABLE IF NOT EXISTS {"productdata" if not(tablename) else tablename} (
             unique_ids serial PRIMARY KEY,
             name TEXT,
             gender TEXT,
@@ -272,7 +272,8 @@ class PostgressDBConnection():
             sizes TEXT,
             images TEXT,
             url TEXT,
-            brand TEXT
+            company TEXT,
+            timestamp TEXT
         );"""
 
         try:
@@ -281,21 +282,27 @@ class PostgressDBConnection():
             cursor.execute(create_table_sql)
             # Commit the changes to the database
             self.conn.commit()
-            print("Table 'productdata' created or already exists.")
+            if tablename:
+                print(f"Table '{tablename}' created or already exists.")
+            else:
+                print("Table 'productdata' created or already exists.")
         except (Exception, psycopg2.DatabaseError) as error:
             print(f"Error: {error}")
         finally:
             # Close the cursor and the database connection
             cursor.close()
+    
+    def create_company_product_table(self, tablename):
+        self.create_product_table(tablename)
         
-        
-    def create_product_urls_table(self):
-        """ Create new table, with fields url and brand"""
-        sql_query = """
-        CREATE TABLE IF NOT EXISTS producturls (
+    def create_product_urls_table(self, tablename = "producturls"):
+        """ Create new table, with fields url and company"""
+        sql_query = f"""
+        CREATE TABLE IF NOT EXISTS {tablename} (
             unique_ids serial PRIMARY KEY,
-            url TEXT,
-            brand TEXT
+            url TEXT UNIQUE,
+            company TEXT,
+            timestamp TEXT
         );"""
 
         try:
@@ -304,7 +311,7 @@ class PostgressDBConnection():
             cursor.execute(sql_query)
             # Commit the changes to the database
             self.conn.commit()
-            print("Table 'product_urls' created or already exists.")
+            print("Table created or already exists.")
         except (Exception, psycopg2.DatabaseError) as error:
             print(f"Error: {error}")
 
@@ -327,13 +334,14 @@ class PostgressDBConnection():
             self.conn.rollback()
             raise Exception("Error creating table")
         
-    def remove_url_duplicates(self, brand, tablename = "producturls"):
-        """Remove duplicates in the database, based on the url. Remove only for given brand (to keep it safe/shorter runtime)"""
+    def remove_url_duplicates(self, company, tablename = "producturls"):
+        """Remove duplicates in the database, based on the url. Remove only for given company (to keep it safe/shorter runtime)"""
+        tablename = f"producturls_{company}"
         query = f"""DELETE FROM {tablename} 
                     WHERE unique_ids NOT IN (
                         SELECT MIN(unique_ids) 
                         FROM {tablename} 
-                        WHERE brand = '{brand}' 
+                        WHERE company = '{company}' 
                         GROUP BY url
                     );"""
         try:
@@ -346,13 +354,14 @@ class PostgressDBConnection():
             raise Exception("Error removing duplicates from database")
         
 
-    def remove_product_duplicates(self, brand, tablename = "productdata"):
-        """Remove duplicates in the database, based on the url. Remove only for given brand (to keep it safe/shorter runtime)"""
+    def remove_product_duplicates(self, company, tablename = "productdata"):
+        """Remove duplicates in the database, based on the url. Remove only for given company (to keep it safe/shorter runtime)"""
+        tablename = f"productdata_{company}"
         query = f"""DELETE FROM {tablename} 
                     WHERE unique_ids NOT IN (
                         SELECT MIN(unique_ids) 
                         FROM {tablename} 
-                        WHERE brand = '{brand}' 
+                        WHERE company = '{company}' 
                         GROUP BY url
                     );"""
         try:
@@ -363,8 +372,23 @@ class PostgressDBConnection():
             self.conn.rollback()
             raise Exception("Error removing duplicates from database")
         
-        
-    
+        # Now, remove duplicates from the total database as well. 
+        query = f"""DELETE FROM productdata
+                    WHERE unique_ids NOT IN (
+                        SELECT MIN(unique_ids) 
+                        FROM productdata 
+                        WHERE company = '{company}' 
+                        GROUP BY url
+                    );"""
+        try:
+            curr = self.conn.cursor()
+            curr.execute(query)
+            self.conn.commit()
+        except:
+            self.conn.rollback()
+            raise Exception("Error removing duplicates from database")
+     
+         
     def table_exists(self, table_name):
         """
         Check if a table exists in the current database connection.
@@ -386,7 +410,7 @@ class PostgressDBConnection():
             
             return cursor.fetchone()[0]
 
-    def run_query(self, query):
+    def run_query(self, query, tablename = None):
         """Runs a query for the database table selected."""
         try:
             curr = self.conn.cursor()
@@ -415,9 +439,12 @@ class PostgressDBConnection():
             return False
 
         
-    def save_data_to_db(self, data, columns):       
+    def save_data_to_db(self, tablename, data, columns): 
         if not(self.table_exists("productdata")):
-            self.create_product_table()
+            self.create_product_table()      
+
+        if not(self.table_exists(tablename)):
+            self.create_company_product_table()
 
         if not(data):
             print("No data provided")
@@ -428,40 +455,57 @@ class PostgressDBConnection():
             return
         
         
+        insert_query = f"INSERT INTO {tablename} ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (unique_ids) DO NOTHING;"
+        with self.conn.cursor() as cursor:
+            psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
+        self.conn.commit()
+
+        # Now, commit into the total database as well.
         insert_query = f"INSERT INTO productdata ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (unique_ids) DO NOTHING;"
         with self.conn.cursor() as cursor:
             psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
         self.conn.commit()
 
 
-
-    def save_urls_db(self, url_list, company_name, gender):
+    def save_urls_db(self, url_list, company_name):
         if (not(url_list) or not(company_name)) or (len(url_list) == 0):
             print("Problem in input provided")
             return
         
-        if not(self.table_exists("producturls")):
-            self.create_product_urls_table()
+        tablename = f"producturls_{company_name}"
+        if not(self.table_exists(tablename)):
+            self.create_product_urls_table(tablename)
         
-        query = f"SELECT url FROM {self.table_name} WHERE company = '{company_name}';"
-        self.run_query(query)  
 
         try:
-            url_tuple = tuple(url_list)
             cur = self.conn.cursor()
 
             # Prepare bulk insert query
-            insert_query = '''
-            INSERT INTO productUrls (url, company, gender)
+            print("bulk insert")
+            print(tablename)
+            insert_query = f'''
+            INSERT INTO {tablename} (url, company, timestamp)
             VALUES %s
             ON CONFLICT (url) DO UPDATE SET company = EXCLUDED.company;
             '''
-            
+            print("executing")
             # Prepare data for bulk insert
-            data = [(url, company_name, gender) for url in url_tuple]
             
             # Execute bulk insert
-            psycopg2.extras.execute_values(cur, insert_query, data)
+            print(len(url_list))
+            urls_so_far = set()
+            new_url_list = []
+            for url in url_list:
+                if not(url[0] in urls_so_far):
+                    urls_so_far.add(url[0])
+                    new_url_list.append(url)
+                else:
+                    continue
+            print(len(urls_so_far))
+            url_tuple = tuple(new_url_list)
+            print(len(new_url_list))
+            psycopg2.extras.execute_values(cur, insert_query, url_tuple)
+            print("executed")
             
             # Commit the transaction
             self.conn.commit()
@@ -472,10 +516,8 @@ class PostgressDBConnection():
         finally:
             # Close cursor and connection
             cur.close()
-            self.conn.close()
     
     def disconnect(self):
         """Disconnect from the database. This function is destructive, will kill the object!"""
         self.conn.close()
         print("Disconnected from database")
-        del self

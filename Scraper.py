@@ -36,7 +36,7 @@ class Scraper():
     proxies_all = "https://customer-ardaakman:Scriep123@pr.oxylabs.io:7777"
     # Split the proxies into a list, and split each proxy into the relevant fields (username, password, endpoint, port)
 
-    def __init__(self, startingUrl, company, brand_base_url, residentialProxy = False, ignoreUpdates=False):
+    def __init__(self, startingUrl, company, brand_base_url, residentialProxy = False, ignoreUpdates= True, product_database = "productdata"):
         # Name of company that is being scraped.
         self.company = company
         # Starting url of the scraped company.
@@ -48,28 +48,31 @@ class Scraper():
         self.ignoreUpdates = ignoreUpdates
 
         # Leave empty string, if urls scraped are absolute/have base url.
-        self.BRAND_BASE_URL = brand_base_url
+        self.brand_base_url = brand_base_url
+        self.product_database = product_database
 
         #Read from proxies.txt and headers.txt
-        with open("./proxies.txt", "r") as file:
+        with open("./cached_data/proxies.txt", "r") as file:
             self.datacenter_proxies = file.readlines()
         self.datacenter_proxies = [x.strip() for x in self.datacenter_proxies]
         
-        with open("./headers.txt", "r") as file:
+        with open("./cached_data/headers.txt", "r") as file:
             self.agents = file.readlines()
         self.agents = [x.strip() for x in self.agents]
+
+        self.use_residential_proxy = residentialProxy
 
         self.residential_proxy = "rotating.proxyempire.io:5000:package-10001-country-us:9ROhXWh4YAaauHEV"
 
         #Default column values used in the database. Do not change if the database columns are the same.
-        self.columns  = ['name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'brand']
+        self.columns  = ['name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company']
 
         #Column names for the urls table in database.
-        self.url_columns = ["url", "brand"]
+        self.url_columns = ["url", "company", "gender", "timestamp"]
 
     
     def get_proxy(self):
-        if self.residentialProxy:
+        if self.use_residential_proxy:
             return self.get_residential_proxy()
         else:
             return self.get_datacenter_proxy()
@@ -95,12 +98,12 @@ class Scraper():
         return proxies
 
 
-    def get_browser_header(self, origin_url) -> str:
+    def get_browser_header(self) -> str:
         # Return a browser agent, that will be used in the header for the HTTP(S) request.
-        agent = random.choice(self.headers)
+        agent = random.choice(self.agents)
         header = {
             "User-Agent": agent,
-            "origin": origin_url
+            "origin": self.brand_base_url
         }
         return header
 
@@ -136,20 +139,19 @@ class Scraper():
     def scrape_products(self, fn):
         """Function that scrapes the actual urls from a website and returns this."""
         if not(self.ignoreUpdates):
-            old_products = self.pg.run_query(f"SELECT url FROM productdata WHERE brand = '{self.company}'")
+            old_products = self.pg.run_query(f"SELECT url FROM productdata_{self.company} WHERE company = '{self.company}'")
             #set of old product urls
             old_set = set(old_products[:,0])
         else:
             old_set = set()
 
-        urls = self.pg.run_query(f"SELECT url FROM producturls WHERE brand = '{self.company}'")
+        urls = self.pg.run_query(f"SELECT url FROM producturls_{self.company} WHERE company = '{self.company}'")
         urls = urls[:,0]
-        urls = [url for url in urls if self.BRAND_BASE_URL + url not in old_set]
+        urls = [url for url in urls if url not in old_set]
         
 
         prods = fn(urls)
-
-        self.saveProduct(prods, self.columns)
+        self.save_product(prods)
     
 
     def scrape_urls(self, fn):
@@ -157,20 +159,22 @@ class Scraper():
         if not connection_established:
             print("Could not establish connection to database. Exiting...")
             sys.exit(1)
-        
-        if not(self.ignoreUpdates):
-            old_products = self.pg.run_query(f"SELECT url FROM producturls WHERE brand = '{self.company}'")
+
+        table_exists = self.pg.table_exists(f"producturls_{self.company}")
+        if not(self.ignoreUpdates) and table_exists:
+            old_products = self.pg.run_query(f"SELECT url FROM producturls WHERE company = '{self.company}'")
             old_set = set(old_products[:, 0])
         else:
             old_set = set()
 
-        urls = fn(self.startingUrl)
+        vals = fn(self.startingUrl, self.brand_base_url)
         result_urls = []
-        for url in urls:
-            if url not in old_set:
-                result_urls.append([url, self.company])
+        for val in vals:
+            if val[0] not in old_set:
+                result_urls.append((val[0], self.company, val[1]))
 
-        self.saveUrls(result_urls, self.url_columns)
+        # Result urls contains the [url, company, geder, timestamp]!
+        self.save_urls(result_urls)
         return result_urls
     
 
@@ -199,11 +203,11 @@ class Scraper():
                 self.pg.save_product_details(vals)
                 print(f"Subchunk {i} processed {subchunk_processed_count} urls")
 
-    def save_urls(self, urls, columns):
+    def save_urls(self, urls):
         """Function that saves the urls to the database."""
-        self.pg.save_data_to_db("producturls", urls, columns)
+        self.pg.save_urls_db(urls, self.company)
 
-    def save_product(self, product, columns):
+    def save_product(self, product):
         """"Here are the columns:
                 'Unique ID': sha256_hash,
                 'Color': product_color,
@@ -218,7 +222,7 @@ class Scraper():
                 'Gender': gender,
                 'Price': product_price,
             """
-        self.pg.save_data_to_db("productdata", product, columns)
+        self.pg.save_data_to_db(f"productdata_{self.company}", product, self.columns)
 
 
     def scrape_single_product(self, driver,  url , fn):
@@ -255,6 +259,10 @@ class Scraper():
                 time.sleep(5)
         except Exception as e:
             print(f"An error occurred: {e}")
+    
+    def kill_db_connection(self):
+        self.pg.disconnect()
+        
 
 
 
