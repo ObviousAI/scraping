@@ -62,10 +62,10 @@ class Scraper():
 
         self.use_residential_proxy = residentialProxy
 
-        self.residential_proxy = "rotating.proxyempire.io:5000:package-10001-country-us:9ROhXWh4YAaauHEV"
+        self.residential_proxy = "customer-ardaakman-cc-us:Scripe123456@pr.oxylabs.io:7777"
 
         #Default column values used in the database. Do not change if the database columns are the same.
-        self.columns  = ['name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company']
+        self.columns  = ['name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company', 'timestamp']
 
         #Column names for the urls table in database.
         self.url_columns = ["url", "company", "gender", "timestamp"]
@@ -91,8 +91,8 @@ class Scraper():
 
         # Construct the proxies dictionary
         proxies = {
-            "https": self.residential_proxy,
-            "http": self.residential_proxy
+            "https": f"https://{self.residential_proxy}",
+            "http": f"http://{self.residential_proxy}",
             }
 
         return proxies
@@ -103,7 +103,8 @@ class Scraper():
         agent = random.choice(self.agents)
         header = {
             "User-Agent": agent,
-            "origin": self.brand_base_url
+            "Origin": self.brand_base_url,
+            "Referer": self.brand_base_url,
         }
         return header
 
@@ -145,7 +146,7 @@ class Scraper():
         else:
             old_set = set()
 
-        urls = self.pg.run_query(f"SELECT url FROM producturls_{self.company} WHERE company = '{self.company}'")
+        urls = self.pg.run_query(f"SELECT url FROM producturls_{self.company} WHERE company = '{self.company}' ORDER BY unique_ids DESC")
         urls = urls[:,0]
         urls = [url for url in urls if url not in old_set]
         

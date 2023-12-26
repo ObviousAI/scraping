@@ -96,6 +96,8 @@ def scrape_urls_zara(scraper: Scraper, url: str, base_url: str) -> list:
             time.sleep(2 if zara_request.status_code == 403 else 1)
             session = setup_session(scraper)
             zara_request = session.get(url)
+            print(zara_request.headers)
+            print(session.headers)
         json_data= zara_request.json()
         _, category_ids = get_categories(json_data)
 
@@ -117,6 +119,7 @@ def scrape_urls_zara(scraper: Scraper, url: str, base_url: str) -> list:
     except SSLError as ssl_err:
         print(f"SSL error occurred: {ssl_err}")
     except Exception as err:
+        print("weird error")
         print(f"An error occurred: {err}")
 
     return []
@@ -128,12 +131,13 @@ def get_price(p):
         price = price[:-2] + "." + price[-2:]
     return price
 
-def get_material(id):
+def get_material(scraper, id):
     material_url = f"https://www.zara.com/us/en/product/{id}/extra-detail?ajax=true"
-    response = requests.get(material_url, headers=headers)
+    session = setup_session(scraper)
+    response = session.get(material_url)
     materials = []
     if response.status_code == 200:
-        material_info = response.json()
+        material_info = json5.loads(response.text)
         for section in material_info:
             if section.get("sectionType") in ["materials", "composition"]:
                 for component in section.get("components"):
@@ -191,11 +195,11 @@ def get_product_brand(product_json, i):
 
 
 
-def get_product_data(product_json, product_link):
+def get_product_data(scraper, product_json, product_link):
     product_name = product_json["product"]["name"]
     colors = [color["name"] for color in product_json["product"]["detail"]["colors"]]
     desc = product_json["productMetaData"][0]["description"]
-    material = get_material(product_json["product"]["detail"]["colors"][0]["productId"])
+    material = get_material(scraper, product_json["product"]["detail"]["colors"][0]["productId"])
     price = get_price(product_json["product"]["detail"]["colors"][0]["price"])
     image_urls = [get_image_urls(color) for color in product_json["product"]["detail"]["colors"]]
     sizes = [get_sizes(color) for color in product_json["product"]["detail"]["colors"]]
@@ -216,7 +220,6 @@ def get_product_data(product_json, product_link):
             "composition": material,
             "price": price,
             "images": image_urls[i],
-            "product_link": product_link,
             "sizes": sizes[i],
             "time_now": time_now,
             "gender": gender,
@@ -226,6 +229,23 @@ def get_product_data(product_json, product_link):
 
     return rows
 
+def format_dictionary_data(product_data):
+    new_rows = []
+    seen_so_far = set()
+    for row in product_data:
+        if row["url"] in seen_so_far:
+            continue
+        seen_so_far.add(row["url"])
+        # Format images the right way first, i.e seperated by |
+        images = row["images"]
+        
+        #Replace https with http
+        for i in range(len(images)):
+            images[i] = images[i].replace("https", "http")
+
+        images_formatted = "|".join(images)
+        new_rows.append([row["name"], row["gender"], row['color'], row['description'], row['composition'], row['price'], row['sizes'], images_formatted, row['url'], row['brand'], row['time_now']])
+    return new_rows
 
 def scrape_items_zara(scraper: Scraper, urls: list) -> list:
     """Function that scrapes the items from the urls."""
@@ -234,20 +254,31 @@ def scrape_items_zara(scraper: Scraper, urls: list) -> list:
     failed_urls = []
     items = []
     pbar = tqdm(total=len(urls), desc="Scraping Zara Products", leave=True)
+    count = 0
     for url in urls:
+        if count % 25 == 0 and count != 0:
+            # Wait extra now and then.
+            time.sleep(3)
+        if count % 50 == 0 and count != 0:
+            session = setup_session(scraper)
+            scraper.save_product(items)
+            items = []
+
         try:
             response = session.get(url)
             while response.status_code != 200:
-                print("Failed to get URL:", url, "Status Code:", response.status_code)
+                print("Failed to get data:", url, "Status Code:", response.status_code)
                 time.sleep(2 if response.status_code == 403 else 1)
                 session = setup_session(scraper)
-                print(session.proxies)
                 response = session.get(url)
 
-            product_json = response.json()
-            product_data = get_product_data(product_json, url)
-            items.extend(product_data)
+            product_json = json5.loads(response.text)
+            product_data = get_product_data(scraper, product_json, url)
+            formatted_data = format_dictionary_data(product_data)
+
+            items.extend(formatted_data)
             pbar.update(1)
+            count+=1
         except Exception as err:
             print(f"An error occurred: {err}")
             failed_urls.append(url)

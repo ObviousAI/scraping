@@ -255,9 +255,9 @@ class PostgressDBConnection():
             )
         self.table_name = table_name
 
-    def create_product_table(self, tablename = None):
+    def create_product_table(self, tablename=None):
         """Columns are the following:
-            columns = ['unique_ids', 'name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company']
+            columns = ['unique_ids', 'name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company', 'timestamp']
         """
         # Create table using self.pg.conn. Just hardcode the above column value, unique_ids being the key of table.
         create_table_sql = f"""
@@ -271,7 +271,7 @@ class PostgressDBConnection():
             price TEXT,
             sizes TEXT,
             images TEXT,
-            url TEXT,
+            url TEXT UNIQUE,
             company TEXT,
             timestamp TEXT
         );"""
@@ -444,7 +444,7 @@ class PostgressDBConnection():
             self.create_product_table()      
 
         if not(self.table_exists(tablename)):
-            self.create_company_product_table()
+            self.create_company_product_table(tablename)
 
         if not(data):
             print("No data provided")
@@ -454,14 +454,13 @@ class PostgressDBConnection():
             print("No columns provided")
             return
         
-        
-        insert_query = f"INSERT INTO {tablename} ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (unique_ids) DO NOTHING;"
+        insert_query = f"INSERT INTO {tablename} ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (url) DO UPDATE SET company = EXCLUDED.company"
         with self.conn.cursor() as cursor:
             psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
         self.conn.commit()
 
         # Now, commit into the total database as well.
-        insert_query = f"INSERT INTO productdata ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (unique_ids) DO NOTHING;"
+        insert_query = f"INSERT INTO productdata ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (url) DO UPDATE SET company = EXCLUDED.company"
         with self.conn.cursor() as cursor:
             psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
         self.conn.commit()
