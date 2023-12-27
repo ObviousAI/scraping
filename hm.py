@@ -276,27 +276,25 @@ def scrape_items(scraper: Scraper, urls: list[str]):
             scraper.save_product(rows, scraper.columns)  # Replace with actual columns
             rows = []
 
-        full_url = scraper.base_url + url
-        header = scraper.get_browser_header()
-        proxy = scraper.get_proxy()
-        session.headers.update(header)
-        session.proxies.update(proxy)
+        full_url = scraper.brand_base_url + url
+        session = setup_session(scraper)
 
         try:
             response = session.get(full_url)
+            while response.status_code != 200:
+                print("Failed to get data:", full_url, "Status Code:", response.status_code)
+                time.sleep(2 if response.status_code == 403 else 1)
+                session = setup_session(scraper)
+                response = session.get(full_url)
             if response.status_code == 200:
-                if scrape_item(full_url, rows, response):
-                    pbar.update(1)
-                else:
+                if not(scrape_item(full_url, rows, response)):
                     failed_urls.append(full_url)
-                    pbar.update(1)
             else:
                 handle_failed_url(scraper, session, response, failed_urls, full_url, rows)
         except:
             failed_urls.append(full_url)
 
-        # Reset the retry count if a successful request is made
-        scraper.reset_retry_count()
+        pbar.update(1)
 
     pbar.close()
     save_failed_urls(failed_urls)
