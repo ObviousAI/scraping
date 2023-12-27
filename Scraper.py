@@ -62,7 +62,7 @@ class Scraper():
 
         self.use_residential_proxy = residentialProxy
 
-        self.residential_proxy = "rotating.proxyempire.io:5000:package-10001-country-us:9ROhXWh4YAaauHEV"
+        self.residential_proxy = "9ROhXWh4YAaauHEV:wifi;;;;@rotating.proxyempire.io:9000"
 
         #Default column values used in the database. Do not change if the database columns are the same.
         self.columns  = ['name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company']
@@ -91,8 +91,8 @@ class Scraper():
 
         # Construct the proxies dictionary
         proxies = {
-            "https": self.residential_proxy,
-            "http": self.residential_proxy
+            "https": f"https://{self.residential_proxy}",
+            "http": f"http://{self.residential_proxy}"
             }
 
         return proxies
