@@ -454,15 +454,21 @@ class PostgressDBConnection():
             print("No columns provided")
             return
         
-        insert_query = f"INSERT INTO {tablename} ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (url) DO UPDATE SET company = EXCLUDED.company"
+        insert_query = f"INSERT INTO {tablename} ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (url) DO UPDATE SET timestamp = EXCLUDED.timestamp;"
+        new_data = []
+        for row in data:
+            if type(row) == list:
+                new_data.append(tuple(row))
+            else:
+                continue
         with self.conn.cursor() as cursor:
-            psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
+            psycopg2.extras.execute_values(cursor, insert_query, new_data)
         self.conn.commit()
 
         # Now, commit into the total database as well.
-        insert_query = f"INSERT INTO productdata ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (url) DO UPDATE SET company = EXCLUDED.company"
+        insert_query = f"INSERT INTO productdata ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (url) DO UPDATE SET timestamp = EXCLUDED.timestamp;"
         with self.conn.cursor() as cursor:
-            psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
+            psycopg2.extras.execute_values(cursor, insert_query, new_data)
         self.conn.commit()
 
 
@@ -491,7 +497,6 @@ class PostgressDBConnection():
             # Prepare data for bulk insert
             
             # Execute bulk insert
-            print(len(url_list))
             urls_so_far = set()
             new_url_list = []
             for url in url_list:
@@ -500,9 +505,7 @@ class PostgressDBConnection():
                     new_url_list.append(url)
                 else:
                     continue
-            print(len(urls_so_far))
             url_tuple = tuple(new_url_list)
-            print(len(new_url_list))
             psycopg2.extras.execute_values(cur, insert_query, url_tuple)
             print("executed")
             

@@ -29,6 +29,7 @@ from Scraper import Scraper
 
 
 load_dotenv()
+ALL_URLS_SEEN = set()
 
 
 ZARA_START_URL = "https://www.zara.com/us/en/categories?ajax=true"
@@ -213,6 +214,7 @@ def get_product_data(scraper, product_json, product_link):
     # Do this in format of mapping within the list below.
 
     for i in range(len(colors)):
+        ALL_URLS_SEEN.add(urls[i])
         rows.append({
             "name": product_name,
             "color": colors[i],
@@ -256,6 +258,9 @@ def scrape_items_zara(scraper: Scraper, urls: list) -> list:
     pbar = tqdm(total=len(urls), desc="Scraping Zara Products", leave=True)
     count = 0
     for url in urls:
+        if url in ALL_URLS_SEEN:
+            continue
+        time.sleep(0.2)
         if count % 25 == 0 and count != 0:
             # Wait extra now and then.
             time.sleep(3)
@@ -266,11 +271,19 @@ def scrape_items_zara(scraper: Scraper, urls: list) -> list:
 
         try:
             response = session.get(url)
-            while response.status_code != 200:
-                print("Failed to get data:", url, "Status Code:", response.status_code)
+            fail_count = 0
+            while response.status_code != 200 and fail_count < 1:
+                print("Failed to get data:", url, "Status Code:", response.status_code, "Fail count:", fail_count)
                 time.sleep(2 if response.status_code == 403 else 1)
                 session = setup_session(scraper)
                 response = session.get(url)
+                fail_count += 1
+            
+            if response.status_code != 200:
+                print("Final fail for url:", url, "Status Code:", response.status_code)
+                failed_urls.append(url)
+                ALL_URLS_SEEN.add(url)
+                continue
 
             product_json = json5.loads(response.text)
             product_data = get_product_data(scraper, product_json, url)
@@ -291,7 +304,11 @@ def scrape_items_zara(scraper: Scraper, urls: list) -> list:
 
 def save_failed_urls(failed_urls):
     # Read from the file, then write to file without duplicates.
-    with open('failed_urls.txt', 'r') as f:
+    # Create file if it doenst exist.
+    if not os.path.exists('failed_urls_zara.txt'):
+        open('failed_urls_zara.txt', 'w').close()
+    
+    with open('failed_urls_zara.txt', 'r') as f:
         lines = f.readlines()
         for line in lines:
             failed_urls.append(line.strip())

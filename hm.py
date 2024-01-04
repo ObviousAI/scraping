@@ -32,6 +32,7 @@ load_dotenv()
 
 
 HM_BASE = "https://www2.hm.com"
+ALL_URLS_SEEN = set()
 
 def find_hrefs(soup, path):
     vals = [a['href'] for a in soup.find_all('a', href=True) if a['href'].startswith(path)]
@@ -151,7 +152,17 @@ def remove_trailing_commas(json_string):
 
 
 def save_failed_urls(failed_urls):
-    with open('failed_urls.txt', 'w') as f:
+    if not os.path.exists('failed_urls_hm.txt'):
+        open('failed_urls_hm.txt', 'w').close()
+    
+    with open('failed_urls_hm.txt', 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            failed_urls.append(line.strip())
+    
+    failed_urls = list(set(failed_urls))
+
+    with open('failed_urls_hm.txt', 'w') as f:
         for url in failed_urls:
             f.write("%s\n" % url)
 
@@ -177,18 +188,80 @@ def handle_failed_url(scraper, session, response, failed_urls, url, rows):
 
 def extract_script_content(soup):
     script_tag = soup.find('script', text=re.compile('productArticleDetails'))
-    if not script_tag:
+    pattern = re.compile(r'var productArticleDetails = ({.*?});', re.DOTALL | re.MULTILINE)
+    script_content = script_tag.string if script_tag else ''
+    match = pattern.search(script_content)
+    if match:
+        json_string = match.group(1)
+        return json_string
+    return None
+
+
+def clean_and_load_json(json_string):
+    try:
+        #Remove all whitespace from the json string.
+        json_string = json_string.replace("'", '"')
+        json_string = re.sub(r"^$", "", json_string)
+        json_string = re.sub(r"\s+", "", json_string)
+        pattern = r'"images":\[.*?\],'
+
+        #First get all image tag matches from above. These will be used to create the dictionary of items.
+        image_array_matches = re.findall(pattern, json_string, flags=re.DOTALL)
+        image_array_matches = [match for match in image_array_matches if match != '']
+
+        # Now, clean the json string by removing the image array matches.
+        cleaned_string = re.sub(pattern, '', json_string, flags=re.DOTALL)
+        marketing_pattern = r'"marketingMarkers":\s*\[[^\]]*?\],'
+        marketing_match = re.findall(marketing_pattern, cleaned_string, flags=re.DOTALL)
+
+        # This part is to fetch the image urls which will be used down the line.
+
+        matches = extract_image_urls(image_array_matches)
+
+        # with open("image_urls.txt", "w") as f:
+        #     json5.dump(matches, f, indent=4)
+        
+        if marketing_match:
+            cleaned_string = re.sub(marketing_pattern, '', cleaned_string, flags=re.DOTALL)
+
+        data = json5.loads(cleaned_string)
+        
+
+        # Reformat it using the standard json library to fix formatting
+        fixed_json_string = json.dumps(data, indent=4)
+        details = json5.loads(fixed_json_string)
+
+        return details, matches
+    except Exception as e:
+        print("Error while cleaning the product details json.")
+        return None, None
+
+def extract_image_urls(all_patterns):
+    image_pattern = r'"image":isDesktop\?"([^"]+)"'
+    fullscreen_pattern= r'"fullscreen":isDesktop\?"([^"]+)"'
+    thumbnail_pattern = r'"thumbnail":isDesktop\?"([^"]+)"'
+    zoom_pattern = r'"zoom":isDesktop\?"([^"]+)"'
+    img_array =[]
+    try:
+        for pattern in all_patterns:
+            img_matches = re.findall(image_pattern, pattern, flags=re.DOTALL)
+            fullscreen_matches = re.findall(fullscreen_pattern, pattern, flags=re.DOTALL)
+            thumbnail_matches = re.findall(thumbnail_pattern, pattern, flags=re.DOTALL)
+            zoom_matches = re.findall(zoom_pattern, pattern, flags=re.DOTALL)
+
+            img_mapping = {}
+            for i in range(len(img_matches)):
+                img_mapping[i] = {}
+                img_mapping[i]['image'] = img_matches[i] if i < len(img_matches) else ''
+                img_mapping[i]['fullscreen'] = fullscreen_matches[i] if i < len(fullscreen_matches) else ''
+                img_mapping[i]['thumbnail'] = thumbnail_matches[i] if i < len(thumbnail_matches) else ''
+                img_mapping[i]['zoom'] = zoom_matches[i] if i < len(zoom_matches) else ''
+            img_array.append(img_mapping)
+        return img_array
+            
+    except Exception as e:
+        print("Error in extracting image urls.")
         return None
-    return script_tag.string
-
-def clean_and_load_json(script_content):
-    json_string = script_content.replace("'", '"')
-    cleaned_string = re.sub(r'^\s*$', '', json_string, flags=re.MULTILINE)
-    return json5.loads(cleaned_string)
-
-def extract_image_urls(all_patterns, idx):
-    pattern = r'isDesktop \? "([^"]+)"'
-    return re.findall(pattern, all_patterns[idx], flags=re.DOTALL)
 
 def fix_gender_values(gender: str):
     # This function forces the gender values to be standardized according to our format.
@@ -203,27 +276,43 @@ def fix_gender_values(gender: str):
     return gender
     
 
-def process_product_details(product_article_details, all_patterns):
+def process_product_details(product_article_details, images):
     product_data = []
     keys = [key for key in product_article_details.keys() if key.isdigit()]
     name = product_article_details.get('alternate', '')
-    gender = name.split(" ")[-4] if name else ''
+    gender = name.split("-")[-1] if name else ''
+    gender = gender.split("|")[0] if gender != '' else ''
+    gender = fix_gender_values(gender)
     # Fix gender values to norms.
 
     code = product_article_details.get('articleCode', '')
 
-
     for idx, key in enumerate(keys):
         product = product_article_details[key]
-        images = extract_image_urls(all_patterns, idx)
+        image_dict = images[idx]
+
+        # From image_dict above, grab the relevant urls.
+        if not(0 in image_dict):
+            used_images = ""
+        elif image_dict[0]["image"]:
+            used_images = "|".join([image_dict[image]['image'] for image in image_dict])
+        elif image_dict[0]["fullscreen"]:
+            used_images = "|".join([image_dict[image]['fullscreen'] for image in image_dict])
+        elif image_dict[0]["thumbnail"]:
+            used_images = "|".join([image_dict[image]['thumbnail'] for image in image_dict])
+        elif image_dict[0]["zoom"]:
+            used_images = "|".join([image_dict[image]['zoom'] for image in image_dict])
+
+        
         url_full = HM_BASE + product.get('url', '')
         prod_name = name.replace("{alternatecolor}", name)
         sizes = "|".join([size['name'] for size in product['sizes']])
         product_data.append([
             prod_name, gender, product.get('name', ''), product.get('description', ''),
-            str(product.get('compositions', '')), product.get('whitePrice', ''),
-            sizes, images, url_full, 'hm'
+            str(product.get('compositions', '')), product.get('whitePrice', '')[1:],
+            sizes, used_images, url_full, 'hm', time.time()
         ])
+        ALL_URLS_SEEN.add(url_full)
     return product_data
 
 
@@ -247,19 +336,17 @@ def scrape_item(url, lst, response):
         print("No script tag found.")
         return False
 
-    json_data = clean_and_load_json(script_content)
+    json_data, matches = clean_and_load_json(script_content)
     if not json_data:
         print("Failed to load JSON data.")
         return False
 
-    pattern = r'"images":\[.*?\],'
-    all_patterns = re.findall(pattern, script_content, flags=re.DOTALL)
     try:
-        product_data = process_product_details(json_data, all_patterns)
-        product_data.append(time.time())
+        product_data = process_product_details(json_data, matches)
         lst.extend(product_data)
         return True
     except Exception as e:
+        print(e)
         print("Error in scraping item!", e, flush=True)
         return False
     
@@ -271,34 +358,32 @@ def scrape_items(scraper: Scraper, urls: list[str]):
     pbar = tqdm(total=len(urls), desc="Scraping HM Products", leave=True)
 
     for i, url in enumerate(urls):
-        if i % 40 == 0 and i != 0:
+        if url in ALL_URLS_SEEN:
+            continue
+        time.sleep(0.2)
+        if i % 5 == 0 and i != 0:
             time.sleep(2)
-            scraper.save_product(rows, scraper.columns)  # Replace with actual columns
+            scraper.save_product(rows)  # Replace with actual columns
             rows = []
 
-        full_url = scraper.brand_base_url + url
         session = setup_session(scraper)
 
         try:
-            response = session.get(full_url)
-            while response.status_code != 200:
-                print("Failed to get data:", full_url, "Status Code:", response.status_code)
-                time.sleep(2 if response.status_code == 403 else 1)
-                session = setup_session(scraper)
-                response = session.get(full_url)
+            response = session.get(url)
             if response.status_code == 200:
-                if not(scrape_item(full_url, rows, response)):
-                    failed_urls.append(full_url)
+                if not(scrape_item(url, rows, response)):
+                    failed_urls.append(url)
             else:
-                handle_failed_url(scraper, session, response, failed_urls, full_url, rows)
-        except:
-            failed_urls.append(full_url)
+                handle_failed_url(scraper, session, response, failed_urls, url, rows)
+        except Exception as e:
+            failed_urls.append(url)
 
         pbar.update(1)
 
     pbar.close()
+    scraper.save_product(rows)  # Replace with actual columns
     save_failed_urls(failed_urls)
-    return rows
+    return
 
 
 def main(scrape_urls_flag, scrape_products_flag, use_residential_proxy):
