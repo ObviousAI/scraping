@@ -86,3 +86,4 @@ wsproto
 zope.interface
 zstandard
 json5
+fake-useragent

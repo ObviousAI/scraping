@@ -257,9 +257,9 @@ class PostgressDBConnection():
             self.conn.autocommit = True
         self.table_name = table_name
 
-    def create_product_table(self, tablename = None):
+    def create_product_table(self, tablename=None):
         """Columns are the following:
-            columns = ['unique_ids', 'name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company']
+            columns = ['unique_ids', 'name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company', 'timestamp']
         """
         # Create table using self.pg.conn. Just hardcode the above column value, unique_ids being the key of table.
         create_table_sql = f"""
@@ -273,7 +273,7 @@ class PostgressDBConnection():
             price TEXT,
             sizes TEXT,
             images TEXT,
-            url TEXT,
+            url TEXT UNIQUE,
             company TEXT,
             timestamp TEXT
         );"""
@@ -446,7 +446,7 @@ class PostgressDBConnection():
             self.create_product_table()      
 
         if not(self.table_exists(tablename)):
-            self.create_company_product_table()
+            self.create_company_product_table(tablename)
 
         if not(data):
             print("No data provided")
@@ -456,16 +456,21 @@ class PostgressDBConnection():
             print("No columns provided")
             return
         
-        
-        insert_query = f"INSERT INTO {tablename} ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (unique_ids) DO NOTHING;"
+        insert_query = f"INSERT INTO {tablename} ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (url) DO UPDATE SET timestamp = EXCLUDED.timestamp;"
+        new_data = []
+        for row in data:
+            if type(row) == list:
+                new_data.append(tuple(row))
+            else:
+                continue
         with self.conn.cursor() as cursor:
-            psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
+            psycopg2.extras.execute_values(cursor, insert_query, new_data)
         self.conn.commit()
 
         # Now, commit into the total database as well.
-        insert_query = f"INSERT INTO productdata ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (unique_ids) DO NOTHING;"
+        insert_query = f"INSERT INTO productdata ({','.join([column for column in columns])}) VALUES %s ON CONFLICT (url) DO UPDATE SET timestamp = EXCLUDED.timestamp;"
         with self.conn.cursor() as cursor:
-            psycopg2.extras.execute_values(cursor, insert_query, [tuple(row) for row in data])
+            psycopg2.extras.execute_values(cursor, insert_query, new_data)
         self.conn.commit()
 
 
@@ -494,7 +499,6 @@ class PostgressDBConnection():
             # Prepare data for bulk insert
             
             # Execute bulk insert
-            print(len(url_list))
             urls_so_far = set()
             new_url_list = []
             for url in url_list:
@@ -503,9 +507,7 @@ class PostgressDBConnection():
                     new_url_list.append(url)
                 else:
                     continue
-            print(len(urls_so_far))
             url_tuple = tuple(new_url_list)
-            print(len(new_url_list))
             psycopg2.extras.execute_values(cur, insert_query, url_tuple)
             print("executed")
             

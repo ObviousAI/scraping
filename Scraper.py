@@ -21,6 +21,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from tqdm import tqdm
 from urllib.parse import quote_plus
+from fake_useragent import UserAgent
 
 from databaseClasses import PostgressDBConnection, AWSS3Connection
 from email.header import Header
@@ -56,16 +57,14 @@ class Scraper():
             self.datacenter_proxies = file.readlines()
         self.datacenter_proxies = [x.strip() for x in self.datacenter_proxies]
         
-        with open("./cached_data/headers.txt", "r") as file:
-            self.agents = file.readlines()
-        self.agents = [x.strip() for x in self.agents]
+        self.agent = UserAgent(browsers=['edge', 'chrome'])
 
         self.use_residential_proxy = residentialProxy
 
-        self.residential_proxy = "9ROhXWh4YAaauHEV:wifi;;;;@rotating.proxyempire.io:9000"
+        self.residential_proxy = "customer-ardaakman-cc-us:Scripe123456@pr.oxylabs.io:7777"
 
         #Default column values used in the database. Do not change if the database columns are the same.
-        self.columns  = ['name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company']
+        self.columns  = ['name', 'gender', 'color', 'description', 'compositions', 'price', 'sizes', 'images', 'url', 'company', 'timestamp']
 
         #Column names for the urls table in database.
         self.url_columns = ["url", "company", "gender", "timestamp"]
@@ -100,10 +99,12 @@ class Scraper():
 
     def get_browser_header(self) -> str:
         # Return a browser agent, that will be used in the header for the HTTP(S) request.
-        agent = random.choice(self.agents)
+        
+        agent = self.agent.random
         header = {
             "User-Agent": agent,
-            "origin": self.brand_base_url
+            "Origin": self.brand_base_url,
+            "Referer": self.brand_base_url,
         }
         return header
 
@@ -138,21 +139,46 @@ class Scraper():
 
     def scrape_products(self, fn):
         """Function that scrapes the actual urls from a website and returns this."""
-        if not(self.ignoreUpdates):
+        if not(self.ignoreUpdates) and self.pg.table_exists(f"productdata_{self.company}"):
             old_products = self.pg.run_query(f"SELECT url FROM productdata_{self.company} WHERE company = '{self.company}'")
             #set of old product urls
-            old_set = set(old_products[:,0])
+            if old_products.size > 0:
+                old_set = set(old_products[:,0])
+            else:
+                old_set = set()
         else:
             old_set = set()
 
-        urls = self.pg.run_query(f"SELECT url FROM producturls_{self.company} WHERE company = '{self.company}'")
+        urls = self.pg.run_query(f"SELECT url FROM producturls_{self.company} WHERE company = '{self.company}' ORDER BY unique_ids DESC")
+        # Now grab previously failed urls. These are cached.
+        failed_urls = set()
+        if os.path.exists(f"./failed_urls_{self.company}"):
+            with open(f"./failed_urls_{self.company}") as f:
+                failed_urls = f.readlines()
+            failed_urls = set([x.strip() for x in failed_urls])
+
         urls = urls[:,0]
         urls = [url for url in urls if url not in old_set]
+        urls = [url for url in urls if url not in failed_urls]
         
-
         prods = fn(urls)
         self.save_product(prods)
+
     
+    def get_urls(self):
+        """Function that returns the urls from the database This is only for the purpose of multiprocessing."""
+        query = self.pg.run_query(f"SELECT url FROM producturls_{self.company} WHERE company = '{self.company}' ORDER BY unique_ids DESC")
+
+        failed_urls = set()
+        if os.path.exists(f"./failed_urls_{self.company}"):
+            with open(f"./failed_urls_{self.company}") as f:
+                failed_urls = f.readlines()
+            failed_urls = set([x.strip() for x in failed_urls])
+        
+        urls = query[:,0]
+        urls = [url for url in urls if url not in failed_urls]
+        return urls
+
 
     def scrape_urls(self, fn):
         connection_established = self.pg.test_connection()
@@ -162,7 +188,7 @@ class Scraper():
 
         table_exists = self.pg.table_exists(f"producturls_{self.company}")
         if not(self.ignoreUpdates) and table_exists:
-            old_products = self.pg.run_query(f"SELECT url FROM producturls WHERE company = '{self.company}'")
+            old_products = self.pg.run_query(f"SELECT url FROM producturls_{self.company} WHERE company = '{self.company}'")
             old_set = set(old_products[:, 0])
         else:
             old_set = set()
