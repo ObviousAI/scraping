@@ -180,9 +180,9 @@ class AWSS3Connection():
 
 
             with tqdm(total=num_batches, desc="Batches completed", unit="batch") as pbar:
-                        for future in as_completed(futures):
-                            batch_result = future.result()  # This will raise exceptions from the threads, if any
-                            pbar.update(1)  # Update the progress bar for each completed batch
+                for future in as_completed(futures):
+                    batch_result = future.result()  # This will raise exceptions from the threads, if any
+                    pbar.update(1)  # Update the progress bar for each completed batch
 
 
     def parse_image_urls(rows):
@@ -234,7 +234,7 @@ class Column():
     
 
 class PostgressDBConnection():
-    def __init__(self, table_name = "productdata", isAWS = True):
+    def __init__(self, table_name = "productdata", isAWS = True, autocommit = False):
         """Initialize the connection to the PostgressSQL database. Make an bject for this for every table you want to connect to, so the logic stays intact. Database can take up to 20 connections at once at the moment."""
         if isAWS:
             self.conn = psycopg2.connect(
@@ -243,7 +243,7 @@ class PostgressDBConnection():
                 password=os.environ.get("AWSDBPASSWORD"),
                 host=os.environ.get("AWSDBURL"),
                 port=os.environ.get("AWSDBPORT"),
-                sslmode='require'
+                sslmode='require',
             )
         else:
             self.conn = psycopg2.connect(
@@ -253,6 +253,8 @@ class PostgressDBConnection():
                 host=os.environ.get("DATABASEURL"),
                 port=os.environ.get("DATABASEPORT")
             )
+        if autocommit:
+            self.conn.autocommit = True
         self.table_name = table_name
 
     def create_product_table(self, tablename = None):

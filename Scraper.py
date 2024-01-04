@@ -36,14 +36,14 @@ class Scraper():
     proxies_all = "https://customer-ardaakman:Scriep123@pr.oxylabs.io:7777"
     # Split the proxies into a list, and split each proxy into the relevant fields (username, password, endpoint, port)
 
-    def __init__(self, startingUrl, company, brand_base_url, residentialProxy = False, ignoreUpdates= True, product_database = "productdata"):
+    def __init__(self, startingUrl, company, brand_base_url, residentialProxy = False, ignoreUpdates= True, product_database = "productdata", autocommit = False):
         # Name of company that is being scraped.
         self.company = company
         # Starting url of the scraped company.
         self.startingUrl = startingUrl
 
         ## Connect to pg database on aws
-        self.pg = PostgressDBConnection(table_name="productdata")
+        self.pg = PostgressDBConnection(table_name="productdata", autocommit = True)
         self.aws = AWSS3Connection()
         self.ignoreUpdates = ignoreUpdates
 
