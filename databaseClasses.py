@@ -21,11 +21,13 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor,as_completed
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+from person_classification import run_all_prediction
 
 
 load_dotenv()
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+BATCH_SIZE = 5
 class AWSS3Connection():
     bucket_name = os.environ.get("AWSBUCKETNAME")
     def __init__(self):
@@ -36,6 +38,11 @@ class AWSS3Connection():
             region_name=os.environ.get("AWSREGION"),
             endpoint_url='https://s3.us-east-2.amazonaws.com',
         )
+        self.function_mapping = {
+            "hm": self.parse_hm_urls,
+            "zara": self.parse_zara_urls,
+        }
+        self.files = None
 
     @staticmethod
     def initialize_s3():
@@ -62,7 +69,7 @@ class AWSS3Connection():
         url_encoded = base64.b64encode(valid_url.encode('utf-8'))  # Encode the valid URL
         s3_key = hashlib.sha256(url_encoded).hexdigest()  # Hash the encoded URL
         return s3_key
-        
+
     @staticmethod
     def list_all_objects(s3_client, bucket_name):
         """List all objects in an S3 bucket."""
@@ -91,22 +98,9 @@ class AWSS3Connection():
 
         return files
     
-
-    def download_and_upload_image(self, url, session, scraper):
-        try:
-            image_bytes_io = self.download_image(url, session, scraper)
-            if image_bytes_io:
-                self.upload_to_s3(image_bytes_io, url, url)
-            else:
-                print(f"Failed to download {url}")
-        except Exception as e:
-            print(f"Exception during processing {url}: {e}")
-
-        
-    def download_image(self, url, sess, scraper):
+    def download_image(self, url, scraper):
         count = 0
-        proxy = scraper.datacenter_proxy()
-        sess.proxies.update(proxy)
+        sess = scraper.setup_session()
         while count < 5:
             try:
                 response = sess.get(url)
@@ -115,115 +109,144 @@ class AWSS3Connection():
             except Exception as e:
                 print(f"Error downloading image {url}: {e}")
             
-            time.sleep(5)  # Wait before retrying
-            new_proxy = scraper.firefox_proxy()
-            sess.proxies.update(new_proxy)
+            time.sleep(2)  # Wait before retrying
+            sess = scraper.setup_session()  # Refresh the session
             count += 1
     
         print("Giving up on url", url)
         return None
+        
+    def get_hm_image(self, chosen_urls, scraper):
+        download_url = chosen_urls[-3] if len(chosen_urls) >= 3 else (chosen_urls[-2] if len(chosen_urls) >= 2 else chosen_urls[-1])
+        if download_url in self.files:
+            return None, None
+        download_url = self.make_valid_url(download_url)
+        return download_url, None
+    
+    def get_zara_image(self, image_urls, scraper):
+        for idx, url in enumerate(image_urls):
+            # Now, we have to kind of figure out if there is a person in the image. To do so, we will quite literally do this multiprocessed - otherwise it becomes fairly bad.
+            if url in self.files:
+                continue
+            
+            image = self.download_image(url, scraper)
+            is_person = run_all_prediction(image, "./yolov3.cfg", "./yolov3.weights")
+            if not(is_person):
+                main_url_index = idx
+                break
+            else:
+                continue
+        if main_url_index == -1:
+            main_url_index = 0
+        download_url = image_urls[main_url_index]
+        if download_url in self.files:
+            return None
+        return download_url, image
+    
+    def get_right_image(self, image_urls, company, scraper):
+        if company == "hm":
+            chosen_urls = image_urls[0::3]
+            download_url, image = self.get_hm_image(chosen_urls, scraper)
+        
+        elif company == "zara":
+            # Try each url, if there is a person. If not, this becomes main image.
+            download_url, image = self.get_zara_image(image_urls, scraper)
+        
+        if not(download_url):
+            return None, None
+        else:
+            image = self.download_image(download_url, scraper) if not(image) else image
+            return image, download_url
+    
+    def parse_hm_urls(self, rows, scraper):
+        _, main_image_queue, other_image_queue = [], [], []
+        urls = rows[:, 1]
 
-    def upload_to_s3(self, image_bytes_io, s3_filename, original_url):
+        for url in urls:
+            split_urls = url[1:-1].split("|" if "|" in url else ",")
+            image, image_url = self.get_right_image(split_urls, "hm", scraper)
+            if not(image):
+                continue
+
+            key = self.upload_to_s3(image, "hm", image_url)
+            main_image_queue.append((image_url, key, "hm"))
+            other_image_queue.extend([(u, "", "hm") for u in split_urls if u != image_url])
+
+        return main_image_queue, other_image_queue
+    
+    def parse_zara_urls(self, rows, scraper):
+        main_image_queue, other_image_queue = [], []
+        urls = rows[:, 1]
+
+        for url in urls:   
+            split_urls = url.split("|") 
+            image, image_url = self.get_right_image(split_urls, "zara", scraper)
+            if not(image):
+                continue
+            key = self.upload_to_s3(image, "zara", image_url)
+            main_image_queue.append((image_url, key, "zara"))
+            other_image_queue.extend([(u, "", "zara") for u in split_urls if u != image_url])
+
+        return main_image_queue, other_image_queue
+
+    def upload_to_s3(self, image_bytes_io, company, original_url):
         mime_type, _ = mimetypes.guess_type(original_url)
         if mime_type is None:
             mime_type = 'image/jpeg'
 
         try:
-            s3_filename_encoded = base64.b64encode(s3_filename.encode('utf-8'))
-            s3_key = hashlib.sha256(s3_filename_encoded).hexdigest()
+            s3_key = self.get_s3_key_from_url(original_url)
             self.s3.put_object(
                 Bucket=AWSS3Connection.bucket_name,
-                Key=s3_key,
+                Key=f"{company}/{s3_key}",
                 Body=image_bytes_io.getvalue(),
                 ContentType=mime_type
             )
         except Exception as e:
             print(f"Error uploading to S3: {e}")
-            raise
+            return ""
 
-    def process_batch(self, urls, session, scraper):
-        proxy = scraper.datacenter_proxy()
-        session.proxies.update(proxy)
-        for url in urls:
-            try:
-                full_url = self.make_valid_url(url)
-                image_bytes_io = self.download_image(full_url, session, scraper)
-                if image_bytes_io:
-                    self.upload_to_s3(image_bytes_io, full_url, full_url)
-                else:
-                    print(f"Failed to download {url}")
-            except Exception as e:
-                print(f"Exception during processing {url}: {e}")
-                
-
-    def process_url_images(self, urls_chunk, scraper):
-        print('Processing URLs...')
-        batch_size = 5
-        num_batches = len(urls_chunk) // batch_size + (len(urls_chunk) % batch_size > 0)
-        with ThreadPoolExecutor(max_workers=20) as executor:  # Adjust the number of workers as needed
-            session = requests.Session()
-            retry_strategy = Retry(
-            total=3,
-                status_forcelist=[429, 500, 502, 503, 504],
-                method_whitelist=["HEAD", "GET", "OPTIONS"],
-                backoff_factor=1
-            )
-            adapter = HTTPAdapter(max_retries=retry_strategy)
-            session = requests.Session()
-            session.mount("http://", adapter)
-            session.mount("https://", adapter)
-            batches = [urls_chunk[i:i + batch_size] for i in range(0, len(urls_chunk), batch_size)]
-        
-            # Each thread processes a batch of URLs
-            futures = [executor.submit(self.process_batch, batch, session, scraper) for batch in batches]
-
-
-
-            with tqdm(total=num_batches, desc="Batches completed", unit="batch") as pbar:
-                for future in as_completed(futures):
-                    batch_result = future.result()  # This will raise exceptions from the threads, if any
-                    pbar.update(1)  # Update the progress bar for each completed batch
-
-
-    def parse_image_urls(rows):
-        image_urls, main_image_queue, other_image_queue = [], [], []
-        urls = rows[:, 1]
-
-        for url in urls:
-            split_urls = url[1:-1].split("|" if "|" in url else ",")
-            split_urls = split_urls[0::3]
-            best_image_url = split_urls[-3] if len(split_urls) >= 3 else (split_urls[-2] if len(split_urls) >= 2 else split_urls[-1])
-            
-            other_images = [u for u in split_urls if u != best_image_url]
-            main_image_queue.append(best_image_url)
-            other_image_queue.extend(other_images)
-
-        return main_image_queue, other_image_queue
+    def parse_image_urls(self, rows, company, scraper):
+        used_function = self.function_mapping[company]
+        main_image_queue, other_image_queue = used_function(rows, scraper)
+        return main_image_queue, other_image_queue 
+    
 
     def filter_new_images(files, image_queue, get_s3_key):
         new_images = [url for url in image_queue if get_s3_key(url) not in files]
         return new_images
+    
+    
 
-    def upload_images_to_s3(self, company, scraper, upload_to_rds=False):
-        query = f"""SELECT url, images
+    def batched_image_upload(self, image_queue, scraper, company):
+        num_batches = len(image_queue) // BATCH_SIZE + (len(image_queue) % BATCH_SIZE > 0)
+        with ThreadPoolExecutor(max_workers=6) as executor:  # Adjust the number of workers as needed
+            batches = [image_queue[i:i + BATCH_SIZE] for i in range(0, len(image_queue), BATCH_SIZE)]
+            futures = [executor.submit(self.parse_image_urls, batch, company, scraper) for batch in batches]
+
+            with tqdm(total=num_batches, desc="Batches completed", unit="batch") as pbar:
+                for future in as_completed(futures):
+                    batch_result = future.result()
+                    # Now, update the pg database with the new url mappings.
+                    scraper.pg.save_url_mapping(batch_result, company)
+                    pbar.update(1)
+
+
+    def upload_images_to_s3(self, scraper, upload_to_rds=False):
+        query = f"""SELECT url, images, company
                     FROM productdata
-                    WHERE company = '{company}'
                     ORDER BY unique_ids ASC;"""
 
         rows = scraper.pg.run_query(query)
         files = self.list_all_objects(self.s3, self.bucket_name)
         print(f"{len(files)} images already in S3.")
-
         rows = np.array(rows)
-        main_image_queue, other_image_queue = self.parse_image_urls(rows)
-        main_new_images = self.filter_new_images(files, main_image_queue, self.get_s3_key_from_url)
-        other_new_images = self.filter_new_images(files, other_image_queue, self.get_s3_key_from_url)
+        self.files = files
+        companies = np.unique(rows[:, 2])
 
-        image_urls = main_new_images + other_new_images
-        print(f"{len(image_urls)} images to be added to S3.")
-
-        self.process_url_images(image_urls, scraper)
-
+        for company in companies:
+            company_urls = rows[rows[:, 2] == company]
+            self.batched_image_upload(company_urls, scraper, company)
 
 @dataclass
 class Column(): 
@@ -495,7 +518,6 @@ class PostgressDBConnection():
             VALUES %s
             ON CONFLICT (url) DO UPDATE SET company = EXCLUDED.company;
             '''
-            print("executing")
             # Prepare data for bulk insert
             
             # Execute bulk insert
@@ -508,6 +530,7 @@ class PostgressDBConnection():
                 else:
                     continue
             url_tuple = tuple(new_url_list)
+            print(url_tuple)
             psycopg2.extras.execute_values(cur, insert_query, url_tuple)
             print("executed")
             
@@ -520,6 +543,26 @@ class PostgressDBConnection():
         finally:
             # Close cursor and connection
             cur.close()
+
+    def save_url_mapping(self, rows):
+        """Save the url mapping to the database."""
+        if not(rows):
+            print("No rows provided")
+            return
+        insert_query = f"INSERT INTO photo_mapping (url, aws_url, company) VALUES %s ON CONFLICT (url) DO NOTHING;"
+        new_data = []
+
+        for row in rows:
+            if type(row) == list:
+                new_data.append(tuple(row))
+            else:
+                continue
+
+        #(image_url, key, "zara")
+        with self.conn.cursor() as cursor:
+            psycopg2.extras.execute_values(cursor, insert_query, new_data)
+        self.conn.commit()
+
     
     def disconnect(self):
         """Disconnect from the database. This function is destructive, will kill the object!"""

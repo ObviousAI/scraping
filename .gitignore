@@ -13,3 +13,7 @@ jsondump
 
 #Test files
 test.py
+test_images
+something.py
+output_images
+object-detection.jpg

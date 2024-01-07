@@ -7,6 +7,7 @@ import os
 import random
 import signal
 import re
+import requests
 
 
 from seleniumwire import webdriver
@@ -107,6 +108,14 @@ class Scraper():
             "Referer": self.brand_base_url,
         }
         return header
+    
+    def setup_session(self):
+        header = self.get_browser_header()
+        session = requests.Session()
+        session.headers.update(header)
+        session.proxies.update(self.get_proxy())
+        return session
+
 
 
     def create_driver(self):
@@ -279,7 +288,7 @@ class Scraper():
                     notify = self.pg.conn.notifies.pop(0)
                     print(f"Received notification: {notify.payload}")
                     # Run the image update function here
-                    self.aws.upload_images_to_s3(self.company, self)
+                    self.aws.upload_images_to_s3(self)
 
                 # Sleep for a short period to prevent high CPU usage, adjust the time as needed
                 time.sleep(5)

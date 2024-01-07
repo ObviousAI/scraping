@@ -17,6 +17,7 @@ docutils
 EasyProcess
 entrypoint2
 exceptiongroup
+fake_useragent
 filelock
 h11
 h2
@@ -33,6 +34,7 @@ lxml
 MouseInfo
 mss
 numpy
+opencv-python
 outcome
 packaging
 pandas
