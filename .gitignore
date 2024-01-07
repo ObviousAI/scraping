@@ -6,7 +6,6 @@ failed_images.txt
 # Package files
 myenv
 hm_scrapy
-yolov3.weights
 
 #caches
 __pycache__
