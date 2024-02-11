@@ -35,7 +35,7 @@ load_dotenv()
 
 class Scraper():
 
-    proxies_all = "https://customer-ardaakman:Scriep123@pr.oxylabs.io:7777"
+    proxies_all = "Proxy Config here"
     # Split the proxies into a list, and split each proxy into the relevant fields (username, password, endpoint, port)
 
     def __init__(self, startingUrl, company, brand_base_url, residentialProxy = False, ignoreUpdates= True, product_database = "productdata", autocommit = False):
